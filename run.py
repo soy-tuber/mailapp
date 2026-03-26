@@ -258,6 +258,7 @@ def cmd_check_replies(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Mail Reminder CLI")
+    parser.add_argument("--profile", default="default", help="ユーザープロファイル名 (.env.{profile} を使用)")
     subparsers = parser.add_subparsers(dest="command")
 
     # digest (デフォルト)
@@ -274,6 +275,9 @@ def main():
     subparsers.add_parser("setup-calendar", help="Google Calendar OAuth2セットアップ")
 
     args, remaining = parser.parse_known_args()
+
+    if config.PROFILE != "default":
+        logger.info(f"プロファイル: {config.PROFILE} ({config.EMAIL_ADDRESS})")
 
     # サブコマンド省略時は digest 扱い（後方互換性）
     if args.command is None:
