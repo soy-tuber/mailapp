@@ -10,6 +10,8 @@
  *   3. setupTrigger() を1回実行（毎朝9時のトリガー設定）
  *   4. スクリプトプロパティに GEMINI_API_KEY を設定
  *      （プロジェクトの設定 → スクリプトプロパティ → 行を追加）
+ *   5. （任意）M365エイリアス開通後、スクリプトプロパティに SEND_AS_EMAIL を設定
+ *      → 下書きの送信元がM365アドレスになる
  */
 
 // ============================================================
@@ -281,17 +283,16 @@ function createGmailDraft_(emailData, draftBody) {
     subject = `Re: ${subject}`;
   }
 
-  // GmailApp.createDraft でスレッド返信の下書きを作成
-  GmailApp.createDraft(
-    emailData.senderEmail,
-    subject,
-    draftBody,
-    {
-      replyTo: emailData.senderEmail,
-      // スレッドに紐づけ（返信として表示される）
-      ...(emailData.gmailMessage ? { inReplyTo: emailData.messageId } : {}),
-    }
-  );
+  // エイリアス設定があれば送信元をM365アドレスにする
+  const sendAsEmail = PropertiesService.getScriptProperties().getProperty("SEND_AS_EMAIL");
+
+  const options = {
+    replyTo: emailData.senderEmail,
+    ...(emailData.gmailMessage ? { inReplyTo: emailData.messageId } : {}),
+    ...(sendAsEmail ? { from: sendAsEmail } : {}),
+  };
+
+  GmailApp.createDraft(emailData.senderEmail, subject, draftBody, options);
 }
 
 // ============================================================
