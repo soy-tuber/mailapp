@@ -1,16 +1,16 @@
 # Mail Reminder
 
-受信メールの返信要否をGeminiが自動判定し、返信文案付きのダイジェストメールを1日1回送信するCLIツール。
+受信メールの返信要否をGeminiが自動判定し、返信下書き＆カレンダー仮登録を毎朝自動実行。
 
 ## アーキテクチャ
 
 ```
-IMAP(Gmail) → メール取得 → Gemini分析 → 下書き保存 / カレンダー登録 → ダイジェストメール送信
-                                ↓
-                          SQLite (未返信トラッキング)
+Gmail受信トレイ → Gemini API分析 → 返信下書き自動作成 / カレンダー仮登録 → ダイジェストメール
 ```
 
-**Human-in-the-loop**: 自動返信なし。文案はあくまで参考用。下書きフォルダに保存されるだけ。
+**Google Apps Script (GAS)** で動作。認証設定不要（Gemini APIキーのみ）。デプロイ不要。
+
+**Human-in-the-loop**: 自動返信なし。下書きを確認して送信ボタンを押すだけ。
 
 ## 機能
 
@@ -18,86 +18,58 @@ IMAP(Gmail) → メール取得 → Gemini分析 → 下書き保存 / カレン
 |------|------|
 | 要返信判定 | Geminiがメールを分析し、返信要否・緊急度・分類を判定 |
 | 返信文案生成 | 要返信メールに対しビジネス敬語の返信案を自動生成 |
-| Gmail下書き保存 | 返信案を元メールのスレッドに紐付けて下書きフォルダに保存 |
+| 下書き保存 | 返信案を元メールのスレッドに紐付けて下書きに保存 |
 | スケジュール検出 | メール内の会議・イベント情報をGeminiが抽出 |
-| Google Calendar登録 | 検出したスケジュールをGoogleカレンダーに自動登録 |
-| 未返信アラート | 一定時間(デフォルト48h)返信がないメールをダイジェストで警告 |
+| カレンダー仮登録 | 検出したスケジュールを【仮】付き・黄色でGoogleカレンダーに登録 |
 | ダイジェストメール | 全結果をHTMLメールで自分宛に送信 |
+| 重複防止 | 処理済みメールにラベルを付与し、二重処理を防止 |
 
-## セットアップ
+## セットアップ（3ステップ）
 
-### 1. Gmailアプリパスワード取得
+### 1. GASプロジェクト作成
 
-1. Googleアカウントで2段階認証を有効化
-2. https://myaccount.google.com/apppasswords でアプリパスワードを生成
+1. [Google Apps Script](https://script.google.com) を開く
+2. 新しいプロジェクトを作成
+3. `gas/MailReminder.gs` の内容を貼り付け
 
-### 2. Gemini APIキー取得
+### 2. Gemini APIキー設定
 
-https://ai.google.dev/ でAPIキーを取得
+1. [Google AI Studio](https://ai.google.dev/) でAPIキーを取得
+2. GASエディタ左の **歯車アイコン（プロジェクトの設定）** → **スクリプトプロパティ**
+3. 以下を追加:
 
-### 3. 環境変数
+| プロパティ | 値 |
+|---|---|
+| `GEMINI_API_KEY` | 取得したAPIキー |
+| `SEND_AS_EMAIL` | （任意）M365エイリアスのアドレス |
 
-`.env` を作成して以下を設定:
+### 3. トリガー設定
+
+GASエディタ上部で `setupTrigger` を選択 → 実行
+
+毎朝9時に自動実行されます。
+
+## 日常のUX
 
 ```
-GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=gemini-3.1-flash-lite-preview
-EMAIL_ADDRESS=your_email@gmail.com
-EMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
-IMAP_SERVER=imap.gmail.com
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-MAX_EMAILS=50
-REPLY_ALERT_HOURS=48
+毎朝9時（自動）
+  ↓
+Gmailの下書きに返信文案が入っている → 確認して送信ボタン
+  ↓
+カレンダーに黄色の【仮】予定が入っている → 確定したら【仮】を消す
+  ↓
+ダイジェストメールで全体を把握
 ```
 
-### 4. インストール・実行
+## M365 Outlookユーザーの場合
 
-```bash
-uv venv && uv pip install -r requirements.txt
-source .venv/bin/activate
-python run.py
-```
+Outlookのメールを扱う場合は、以下の構成で対応:
 
-### 5. Google Calendar連携（任意）
+1. **Outlook → Gmail転送**: M365の設定で全メールをGmailに自動転送
+2. **Gmailエイリアス**: GmailからM365アドレスとして送信できるように設定
+3. GASが転送されたメールを分析・下書き作成
 
-1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成
-2. **Google Auth Platform** → 同意画面を構成（テストユーザーに自分を追加）
-3. **認証情報** → OAuth クライアント ID → **デスクトップ アプリ** で作成
-4. JSONをダウンロード → `mailapp/credentials.json` に配置
-5. セットアップ実行:
-
-```bash
-python run.py setup-calendar
-```
-
-## 使い方
-
-```bash
-# 今日のメールを分析してダイジェスト送信（下書き保存+カレンダー登録含む）
-python run.py
-
-# サブコマンドを明示
-python run.py digest
-
-# 日付を指定して実行
-python run.py digest --date 2026-03-25
-
-# 分析のみ（メール送信・下書き保存なし）
-python run.py digest --dry-run
-
-# 下書き保存をスキップ
-python run.py digest --no-drafts
-
-# カレンダー登録をスキップ
-python run.py digest --no-calendar
-
-# 未返信チェック（単独実行）
-python run.py check-replies
-
-# Google Calendar OAuth2セットアップ
-python run.py setup-calendar
-```
+エイリアス設定の詳細は [`gas/M365_ALIAS_SETUP.md`](gas/M365_ALIAS_SETUP.md) を参照。
 
 ## Gemini判定基準
 
@@ -106,38 +78,47 @@ python run.py setup-calendar
 | 要返信 | 質問・依頼・確認要求 |
 | 不要 | ニュースレター・通知・広告・自動送信・CC参考送付 |
 
-要返信メールには緊急度(high/medium/low)と分類(question/request/confirmation等)も付与される。
-スケジュール情報(会議・イベント等)が含まれるメールは自動検出される。
+要返信メールには緊急度(high/medium/low)と分類(question/request/confirmation等)を付与。
+スケジュール情報(会議・イベント等)が含まれるメールは自動検出し、カレンダーに仮登録。
+
+## 設定値
+
+`gas/MailReminder.gs` 内の `CONFIG` オブジェクトで調整可能:
+
+| 設定 | デフォルト | 説明 |
+|------|-----------|------|
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite-preview` | 使用するGeminiモデル |
+| `SEARCH_DAYS` | `1` | 過去何日分のメールを対象にするか |
+| `MAX_EMAILS` | `50` | 1回の実行で処理する最大メール数 |
+| `PROCESSED_LABEL` | `MailReminder/処理済` | 重複防止用のGmailラベル名 |
+| `TENTATIVE_PREFIX` | `【仮】` | カレンダー仮登録時のタイトルプレフィックス |
 
 ## ファイル構成
 
 ```
 mailapp/
-├── run.py                # CLIエントリポイント (サブコマンド対応)
-├── mail_client.py        # IMAP受信 / SMTP送信 / 下書き保存 / 返信チェック
-├── gemini_analyzer.py    # Gemini判定・返信文案・スケジュール検出
-├── models.py             # Emailデータクラス
-├── config.py             # 設定管理(.env読み込み)
-├── db.py                 # SQLite 未返信トラッキング
-├── auth.py               # Google Calendar OAuth2認証
-├── calendar_client.py    # Google Calendar イベント作成
-├── credentials.json      # OAuth2クライアントID (git管理外)
-├── requirements.txt
-├── .env                  # 環境変数 (git管理外)
-├── .gitignore
-└── README.md
-
-~/.mailapp/
-├── calendar_token.json   # OAuth2トークン (自動生成)
-└── mailreminder.db       # SQLiteデータベース (自動生成)
+├── README.md
+├── gas/
+│   ├── MailReminder.gs        # GAS本体（コピペで動く）
+│   └── M365_ALIAS_SETUP.md   # M365エイリアス設定ガイド
+└── python/                    # 参考: 旧Python CLI版
+    ├── run.py
+    ├── mail_client.py
+    ├── gemini_analyzer.py
+    ├── models.py
+    ├── config.py
+    ├── db.py
+    ├── auth.py
+    ├── calendar_client.py
+    └── requirements.txt
 ```
 
-## 定期実行(cron)
+## 技術スタック
 
-```bash
-# 毎朝9時にダイジェスト送信
-0 9 * * * cd /home/soy/mailapp && .venv/bin/python run.py
-
-# 夕方に未返信チェック
-0 17 * * * cd /home/soy/mailapp && .venv/bin/python run.py check-replies
-```
+| コンポーネント | 技術 |
+|---|---|
+| 実行環境 | Google Apps Script |
+| AI分析 | Gemini API (Flash Lite) |
+| メール操作 | GmailApp（ネイティブ） |
+| カレンダー操作 | CalendarApp（ネイティブ） |
+| 定期実行 | GAS時間ベーストリガー |
