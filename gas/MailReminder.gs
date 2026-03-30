@@ -18,7 +18,7 @@
 // 設定
 // ============================================================
 const CONFIG = {
-  GEMINI_MODEL: "gemini-2.5-flash-lite-preview-06-17",
+  GEMINI_MODEL: "gemini-2.0-flash-lite",
   TIMEZONE: "Asia/Tokyo",
   MAX_EMAILS: 50,
   REPLY_ALERT_HOURS: 48,
