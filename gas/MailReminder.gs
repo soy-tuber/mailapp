@@ -278,21 +278,14 @@ function callGeminiApi_(apiKey, prompt, temperature, maxTokens) {
 // Gmail下書き作成（スレッドに紐づく返信下書き）
 // ============================================================
 function createGmailDraft_(emailData, draftBody) {
-  let subject = emailData.subject;
-  if (!/^Re:\s*/i.test(subject)) {
-    subject = `Re: ${subject}`;
-  }
-
   // エイリアス設定があれば送信元をM365アドレスにする
   const sendAsEmail = PropertiesService.getScriptProperties().getProperty("SEND_AS_EMAIL");
-
   const options = {
-    replyTo: emailData.senderEmail,
-    ...(emailData.gmailMessage ? { inReplyTo: emailData.messageId } : {}),
     ...(sendAsEmail ? { from: sendAsEmail } : {}),
   };
 
-  GmailApp.createDraft(emailData.senderEmail, subject, draftBody, options);
+  // 元メッセージのスレッドに紐づく返信下書きを作成
+  emailData.gmailMessage.createDraftReply(draftBody, options);
 }
 
 // ============================================================
