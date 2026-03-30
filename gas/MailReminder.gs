@@ -334,8 +334,8 @@ function createTentativeEvent_(eventInfo, emailData) {
     return null;
   }
 
-  // 仮予定の色を設定（バナナ = 黄色 → 仮であることを視覚的に示す）
-  event.setColor(CalendarApp.EventColor.BANANA);
+  // 仮予定の色を設定（黄色 = "5" → 仮であることを視覚的に示す）
+  event.setColor("5");
 
   return event.getId();
 }
